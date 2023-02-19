@@ -60,7 +60,7 @@ impl<'a, T: ?Sized> Deref for PinLockGuard<'a, T> {
 
 impl<'a, T: ?Sized> PinLockGuard<'a, T> {
     /// Get a pinned mutable reference to the value inside this wrapper.
-    pub fn as_mut<'b>(orig: &'b mut PinLockGuard<'a, T>) -> Pin<&'b mut T> {
-        orig.inner.as_mut()
+    pub fn as_mut<'b>(self: &'b mut PinLockGuard<'a, T>) -> Pin<&'b mut T> {
+        self.inner.as_mut()
     }
 }
