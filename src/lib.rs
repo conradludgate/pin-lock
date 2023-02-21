@@ -3,7 +3,7 @@
 use std::{
     ops::Deref,
     pin::Pin,
-    sync::{Mutex, MutexGuard},
+    sync::{Mutex, MutexGuard, TryLockError},
 };
 
 pub struct PinLock<T: ?Sized> {
@@ -41,6 +41,33 @@ impl<T: ?Sized> PinLock<T> {
         let pin_ref_mut: Pin<MutexGuard<'a, T>> = unsafe { Pin::new_unchecked(ref_mut) };
 
         PinLockGuard { inner: pin_ref_mut }
+    }
+    /// Acquires a mutex, blocking the current thread until it is able to do so.
+    ///
+    /// This function will block the local thread until it is available to acquire
+    /// the mutex. Upon returning, the thread is the only thread with the lock
+    /// held. An RAII guard is returned to allow scoped unlock of the lock. When
+    /// the guard goes out of scope, the mutex will be unlocked.
+    pub fn try_lock<'a>(self: Pin<&'a Self>) -> Option<PinLockGuard<'a, T>> {
+        let ref_mut = Pin::get_ref(self).inner.try_lock();
+        let ref_mut: MutexGuard<'a, T> = match ref_mut {
+            Ok(t) => t,
+            Err(p @ TryLockError::Poisoned(_)) => panic!("{p:?}"),
+            Err(TryLockError::WouldBlock) => return None,
+        };
+
+        // this is a pin projection from Pin<&PinLock<T>> to Pin<Mutex<T>>
+        // projecting is safe because:
+        //
+        // - for<T: ?Sized> (PinLock<T>: Unpin) imples (Mutex<T>: Unpin)
+        //   holds true
+        // - PinLock does not implement Drop
+        //
+        // see discussion on tracking issue #49150 about pin projection
+        // invariants
+        let pin_ref_mut: Pin<MutexGuard<'a, T>> = unsafe { Pin::new_unchecked(ref_mut) };
+
+        Some(PinLockGuard { inner: pin_ref_mut })
     }
 }
 
